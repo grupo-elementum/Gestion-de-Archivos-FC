@@ -1,0 +1,71 @@
+.button-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 40px; /* Separación entre grupos */
+  align-items: center;
+}
+
+.button-group {
+  display: flex;
+  align-items: center;
+  gap: 35px; /* Separación entre botones y círculos */
+}
+
+/* Botones */
+.btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 220px;
+  height: 60px;
+  font-size: 1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+/* Botón Subir Archivo */
+.upload-btn {
+  background-color: #26425A;
+  color: #E1CBD7;
+}
+
+.upload-btn:hover {
+  background-color: #3C3EB4;
+  transform: scale(1.05);
+}
+
+/* Botón Descargar Archivo */
+.download-btn {
+  background-color: #1B2939;
+  color: #C3EBB4;
+}
+
+.download-btn:hover {
+  background-color: #86A8CF;
+  transform: scale(1.05);
+}
+
+/* Círculos */
+.circle {
+  width: 60px;
+  height: 60px;
+  background-color: #3C3EB4;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+.circle .icon {
+  font-size: 1.8rem;
+  color: #ffffff;
+}
+
+/* Ocultar input */
+.file-input {
+  display: none;
+}

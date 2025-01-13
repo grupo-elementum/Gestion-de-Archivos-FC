@@ -1,0 +1,127 @@
+/* Superposición del modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+/* Contenedor del modal */
+.modal-content {
+  background: white;
+  padding: 20px; /* Reducir espacio interno */
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  width: 95%; /* Aumentar el ancho total del modal */
+  max-width: 1200px; /* Ancho máximo más amplio */
+  max-height: 85vh; /* Altura máxima ajustada */
+  overflow-y: auto; /* Scroll solo vertical */
+  display: flex;
+  flex-direction: column; /* Asegura que los botones estén al final */
+  position: relative; /* Para posicionar la cruz de cierre */
+}
+
+h2 {
+  font-size: 1.2rem; /* Reducir tamaño del título */
+  margin: 0; /* Eliminar márgenes adicionales */
+  padding-bottom: 10px; /* Pequeño espacio inferior */
+  text-align: center; /* Centrar el texto */
+  position: relative;
+  top: -5px; /* Subirlo más cerca del borde */
+}
+
+/* Contenedor de la tabla */
+.table-container {
+  flex: 1;
+  overflow-y: auto; /* Solo habilitar scroll vertical */
+  margin-bottom: 20px; /* Espacio para los botones fijos */
+}
+
+/* Tabla dentro del modal */
+table {
+  width: 100%; /* Ocupa todo el ancho del modal */
+  border-collapse: collapse; /* Elimina espacios entre celdas */
+}
+
+table th, table td {
+  border: 1px solid #ddd; /* Bordes de las celdas */
+  padding: 5px 10px; /* Reducir relleno en las celdas */
+  text-align: center; /* Centrar contenido */
+  font-size: 0.9rem; /* Reducir tamaño del texto */
+  white-space: nowrap; /* Evitar que las celdas ocupen varias líneas */
+}
+
+table th {
+  background-color: #26425A; /* Color oscuro de la paleta */
+  color: #fff; /* Texto blanco */
+}
+
+table td {
+  background-color: #f4f4f4; /* Fondo claro */
+  color: #333; /* Texto oscuro */
+}
+
+/* Botones en el modal */
+.modal-actions {
+  display: flex;
+  justify-content: space-around;
+}
+
+.modal-actions.fixed-actions {
+  position: sticky;
+  bottom: 0;
+  background-color: white;
+  padding: 10px 0;
+  border-top: 1px solid #ddd;
+  z-index: 10;
+}
+
+/* Botón Confirmar */
+.confirm-btn, .cancel-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.confirm-btn {
+  background-color: #4c4eaf; /* Azul oscuro */
+  color: white;
+}
+
+.confirm-btn:hover {
+  background-color: #3C3EB4;
+}
+
+/* Botón Cancelar */
+.cancel-btn {
+  background-color: #369ef4; /* Azul claro */
+  color: white;
+}
+
+.cancel-btn:hover {
+  background-color: #0b98da;
+}
+
+/* Cruz para cerrar el modal */
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.modal-close:hover {
+  color: #f44336; /* Cambia a rojo al pasar el mouse */
+}
