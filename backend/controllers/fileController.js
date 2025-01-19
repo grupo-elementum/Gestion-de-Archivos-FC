@@ -98,40 +98,96 @@ async function uploadFile(req, res) {
 }
 
 
-
 async function downloadData(req, res) {
-    try {
-        // Conectamos a la base de datos y ejecutamos la consulta
-        const pool = await poolPromise;
-        const query = `SELECT * FROM FrioCalor`; // Ajusta el nombre de la tabla si es diferente
-        const result = await pool.request().query(query);
+  try {
+      const pool = await poolPromise;
 
-        const data = result.recordset; // Los registros obtenidos de la base de datos
+      // 1. Verificar duplicados
+      const queryDuplicados = `
+          SELECT nro_serie = LTRIM(RTRIM(nro_serie)), idcliente
+          FROM ClientesServicios
+          WHERE nro_serie IN (
+              SELECT nro_serie
+              FROM ClientesServicios
+              WHERE fecha_baja IS NULL
+              GROUP BY nro_serie
+              HAVING COUNT(idcliente) > 1
+          )
+          AND fecha_baja IS NULL
+          ORDER BY nro_serie, idcliente;
+      `;
+      const resultDuplicados = await pool.request().query(queryDuplicados);
 
-        // Convertimos los datos a formato Excel
-        const workbook = xlsx.utils.book_new();
-        const worksheet = xlsx.utils.json_to_sheet(result.recordset); // Convierte los datos en una hoja
-        xlsx.utils.book_append_sheet(workbook, worksheet, "FrioCalor");
+      if (resultDuplicados.recordset.length > 0) {
+          // Caso: Existen duplicados
+          console.log("Duplicados detectados:", resultDuplicados.recordset);
 
-        // Guardamos el archivo Excel en una ubicación temporal
-        const filePath = path.join(__dirname, "../uploads", "datos_FrioCalor.xlsx");
-        xlsx.writeFile(workbook, filePath);
+          // Crear archivo Excel con duplicados
+          const workbookDuplicados = xlsx.utils.book_new();
+          const worksheetDuplicados = xlsx.utils.json_to_sheet(resultDuplicados.recordset);
+          xlsx.utils.book_append_sheet(workbookDuplicados, worksheetDuplicados, 'Duplicados');
+          
+          const filePathDuplicados = path.join(__dirname, '../uploads', 'duplicados.xlsx');
+          xlsx.writeFile(workbookDuplicados, filePathDuplicados);
 
-        // Enviamos el archivo Excel como respuesta
-        res.download(filePath, "datos_FrioCalor.xlsx", (err) => {
-            if (err) {
-                console.error("Error al enviar el archivo:", err);
-                res.status(500).send("Error al descargar el archivo.");
-            }
+          // Descargar archivo y mostrar mensaje
+          res.download(filePathDuplicados, 'duplicados.xlsx', (err) => {
+              if (err) {
+                  console.error('Error al enviar el archivo:', err);
+                  return res.status(500).send('Error al descargar el archivo.');
+              }
+              fs.unlinkSync(filePathDuplicados); // Borrar archivo después de enviarlo
+              
+              // Mostrar mensaje al usuario
+              res.status(200).json({
+                  success: true,
+                  message: "Existen duplicados. Se ha generado un archivo con los detalles."
+              });
+          });
 
-            // Eliminamos el archivo temporal después de enviarlo
-            fs.unlinkSync(filePath);
-        });
-    } catch (err) {
-        console.error("Error al descargar los datos:", err);
-        res.status(500).json({ success: false, message: "Error al descargar los datos.", error: err.message });
-    }
+          return; // Salimos de la función después de manejar duplicados
+      }
+
+      // 2. Si no hay duplicados, descargar estructura de información
+      const queryEstructura = `
+          SELECT IdCliente, Marca, '' AS Marca_nueva, Modelo, '' AS Modelo_nuevo,
+                 Nro_Serie, IdProducto,
+                 ISNULL((SELECT TOP 1 Descripcion FROM EquiposFCUbicaciones WHERE Descripcion LIKE '%CLIENTE%'), '') AS idubicacion,
+                 ISNULL((SELECT TOP 1 Descripcion FROM EquiposFCEstados WHERE Descripcion LIKE '%OPERATIV%'), '') AS idestado,
+                 IdServicio, Fecha_Desde
+          FROM ClientesServicios
+          WHERE Fecha_Baja IS NULL
+            AND NOT Nro_Serie IN (SELECT Nro_Serie FROM EquiposFC);
+      `;
+      const resultEstructura = await pool.request().query(queryEstructura);
+
+      if (resultEstructura.recordset.length === 0) {
+          return res.status(404).json({ success: false, message: 'No se encontraron datos para descargar.' });
+      }
+
+      // Crear archivo Excel con estructura de información
+      const workbookEstructura = xlsx.utils.book_new();
+      const worksheetEstructura = xlsx.utils.json_to_sheet(resultEstructura.recordset);
+      xlsx.utils.book_append_sheet(workbookEstructura, worksheetEstructura, 'Estructura');
+
+      const filePathEstructura = path.join(__dirname, '../uploads', 'estructura_datos.xlsx');
+      xlsx.writeFile(workbookEstructura, filePathEstructura);
+
+      // Descargar archivo al cliente
+      res.download(filePathEstructura, 'estructura_datos.xlsx', (err) => {
+          if (err) {
+              console.error('Error al enviar el archivo:', err);
+              return res.status(500).send('Error al descargar el archivo.');
+          }
+          fs.unlinkSync(filePathEstructura); // Borrar archivo después de enviarlo
+      });
+  } catch (err) {
+      console.error('Error al descargar los datos:', err);
+      res.status(500).json({ success: false, message: 'Error al descargar los datos.', error: err.message });
+  }
 }
+
+
 
 module.exports = { uploadFile, previewFile, downloadData }; // Exportamos la nueva función
 
