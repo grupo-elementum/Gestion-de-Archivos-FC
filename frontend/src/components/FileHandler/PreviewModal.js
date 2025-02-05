@@ -12,10 +12,48 @@ const formatDate = (date) => {
 };
 
 const PreviewModal = ({ data, onConfirm, onCancel }) => {
+  const handleConfirm = async () => {
+    try {
+      // Enviar solicitud al backend para procesar los datos
+      const response = await fetch('http://localhost:4000/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ data }), // Enviar los datos al backend
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al procesar el archivo');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        // Descargar el archivo de resultados si está disponible
+        if (result.resultadosPath) {
+          const downloadUrl = `http://localhost:4000${result.resultadosPath}`;
+          const downloadResponse = await fetch(downloadUrl);
+          const blob = await downloadResponse.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'resultados_importacion.xlsx';
+          a.click();
+          window.URL.revokeObjectURL(url);
+        }
+        alert('Archivo procesado correctamente');
+      } else {
+        alert('Se procesaron los datos, pero hubo errores');
+      }
+    } catch (error) {
+      console.error('Error en el proceso de confirmación:', error);
+      alert('Error al procesar el archivo. Revisa la consola para más detalles.');
+    }
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal-content">
-        {/* Cruz para cerrar el modal */}
         <button className="modal-close" onClick={onCancel}>
           &times;
         </button>
@@ -58,7 +96,7 @@ const PreviewModal = ({ data, onConfirm, onCancel }) => {
           </table>
         </div>
         <div className="modal-actions fixed-actions">
-          <button className="confirm-btn" onClick={onConfirm}>
+          <button className="confirm-btn" onClick={handleConfirm}>
             Confirmar
           </button>
           <button className="cancel-btn" onClick={onCancel}>

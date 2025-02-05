@@ -3,6 +3,9 @@ const multer = require("multer");
 const path = require("path");
 const { uploadFile, previewFile, downloadData } = require("../controllers/fileController");
 
+// Importar el controlador de importación
+const { importFile } = require("../controllers/fileController");
+
 const router = express.Router();
 
 // Configuración de multer para subir archivos
@@ -22,5 +25,10 @@ router.post("/upload", upload.single("file"), uploadFile); // Subir archivos
 // router.get("/download/:id", downloadFile); // Descargar un archivo específico por ID
 router.post("/preview", upload.single("file"), previewFile); // Previsualizar archivos
 router.get("/download-database", downloadData); // Descargar datos desde la base de datos
+
+
+
+
+
 
 module.exports = router;
