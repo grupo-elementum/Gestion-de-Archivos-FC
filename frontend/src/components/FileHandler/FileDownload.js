@@ -1,32 +1,57 @@
 import React from 'react';
 import axios from 'axios';
 
-const FileDownload = ({ fileName = 'datos_FrioCalor.xlsx', endpoint = 'http://localhost:4000/api/download-database' }) => {
+const FileDownload = ({ fileName = 'estructura_datos.xlsx', endpoint = 'http://localhost:4000/api/download-database' }) => {
   const handleDownload = async () => {
     try {
-      // Realizar la solicitud al backend
-      const response = await axios.get(endpoint, { responseType: 'blob' });
+      const response = await axios.get(endpoint, { 
+        responseType: 'blob',
+        validateStatus: (status) => status === 200 || status === 500 // Permitir manejar 500 como errores
+      });
+      
+      // 1. Obtener nombre real del archivo desde headers
+      const contentDisposition = response.headers['content-disposition'];
+      const downloadedFileName = contentDisposition 
+        ? contentDisposition.split('filename=')[1].replace(/"/g, '') 
+        : fileName;
 
-      // Crear un enlace para descargar el archivo
+      // 2. Crear enlace de descarga
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', fileName); // Usa el nombre personalizado del archivo
+      link.setAttribute('download', downloadedFileName);
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link); // Limpieza del DOM
-
-      // Verificar si el backend envió información adicional en la respuesta
-      if (response.headers['content-disposition']?.includes('duplicados')) {
-        alert('Descargaste un archivo con duplicados.');
-      } else if (response.headers['content-disposition']?.includes('estructura')) {
-        alert('Descargaste un archivo con la estructura completa.');
+      document.body.removeChild(link);
+      
+      // 3. Mostrar mensaje específico según tipo de archivo
+      if (downloadedFileName.includes('duplicados')) {
+        alert('✅ Archivo de duplicados descargado correctamente');
+      } else if (downloadedFileName.includes('estructura_datos')) {
+        alert('✅ Estructura de datos descargada exitosamente');
       } else {
-        alert('Archivo descargado con éxito.');
+        alert('✅ Descarga completada');
       }
+
     } catch (error) {
-      console.error('Error al descargar el archivo:', error);
-      alert('Error al intentar descargar el archivo. Revisa la conexión con el backend.');
+      // 4. Manejo mejorado de errores
+      let errorMessage = 'Error de conexión con el backend';
+      
+      if (error.response) {
+        if (error.response.data instanceof Blob) {
+          const errorText = await error.response.data.text();
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || 'Error en el servidor';
+          } catch {
+            errorMessage = 'El archivo solicitado no pudo generarse';
+          }
+        } else {
+          errorMessage = error.response.data?.message || 'Error desconocido';
+        }
+      }
+      
+      alert(`❌ ${errorMessage}`);
     }
   };
 

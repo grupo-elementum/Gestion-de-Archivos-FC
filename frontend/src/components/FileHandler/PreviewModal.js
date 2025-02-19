@@ -59,41 +59,42 @@ const PreviewModal = ({ data, onConfirm, onCancel }) => {
         </button>
         <h2>Previsualización de Datos</h2>
         <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Id Producto</th>
-                <th>Id Marca</th>
-                <th>Id Modelo</th>
-                <th>Nro Serie</th>
-                <th>Id Cliente</th>
-                <th>Id Ubicación</th>
-                <th>Id Estado</th>
-                <th>Id Servicio</th>
-                <th>Sector</th>
-                <th>Fecha Desde del Servicio</th>
-                <th>Fecha Modificación</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data &&
-                data.map((row, index) => (
-                  <tr key={index}>
-                    <td>{row.idproducto}</td>
-                    <td>{row.Idmarca}</td>
-                    <td>{row.Idmodelo}</td>
-                    <td>{row.nro_serie}</td>
-                    <td>{row.Idcliente}</td>
-                    <td>{row.Idubicacion}</td>
-                    <td>{row.Idestado}</td>
-                    <td>{row.Idservicio}</td>
-                    <td>{row['Sector ']}</td>
-                    <td>{formatDate(row['fecha_desde del servicio'])}</td>
-                    <td>{formatDate(row.Fecha_modificacion)}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+        <table>
+    <thead>
+      <tr>
+        <th>Id Cliente</th>
+        <th>Marca</th>
+        <th>Marca Nueva</th>
+        <th>Modelo</th>
+        <th>Modelo Nuevo</th>
+        <th>Nro Serie</th>
+        <th>Id Producto</th>
+        <th>Id Ubicación</th>
+        <th>Id Estado</th>
+        <th>Id Servicio</th>
+        <th>Fecha Desde</th>
+      </tr>
+    </thead>
+    <tbody>
+      {data &&
+        data.map((row, index) => (
+          <tr key={index}>
+            <td>{row.IdCliente}</td>
+            <td>{row.Marca}</td>
+            <td>{row.Marca_nueva}</td>
+            <td>{row.Modelo}</td>
+            <td>{row.Modelo_nuevo}</td>
+            <td>{row.Nro_Serie}</td>
+            <td>{row.IdProducto}</td>
+            <td>{row.idubicacion}</td>
+            <td>{row.idestado}</td>
+            <td>{row.IdServicio}</td>
+            <td>{formatDate(row.Fecha_Desde)}</td>
+          </tr>
+        ))}
+    </tbody>
+  </table>
+        
         </div>
         <div className="modal-actions fixed-actions">
           <button className="confirm-btn" onClick={handleConfirm}>
