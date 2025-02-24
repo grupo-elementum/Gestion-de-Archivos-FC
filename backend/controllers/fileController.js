@@ -9,75 +9,92 @@ const { error } = require("console");
 
 // Función para previsualizar los datos del archivo subido
 async function previewFile(req, res) {
+  let filePath;
+  // Definir expectedColumns fuera del try para que esté disponible en el catch
+  const expectedColumns = [
+    "IdCliente", "Marca", "Marca_nueva", "Modelo", "Modelo_nuevo",
+    "Nro_Serie", "IdProducto", "idubicacion", "idestado", "IdServicio", "Fecha_Desde"
+  ];
+
   try {
-    // Verificamos si se subió un archivo
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "No se subió ningún archivo para previsualización." });
+      return res.status(400).json({ 
+        success: false, 
+        message: "No se subió ningún archivo.",
+        details: `Columnas requeridas: ${expectedColumns.join(", ")}` 
+      });
     }
 
-    console.log('Archivo recibido para previsualización:', req.file);
-
-    // Ruta del archivo subido
-    const filePath = path.join(__dirname, "../uploads", req.file.filename);
-
-    // Leer el archivo Excel
+    filePath = path.join(__dirname, "../uploads", req.file.filename);
     const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0]; // Tomamos el primer sheet del archivo
-    const sheetData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]); // Convertimos a JSON
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const sheetData = xlsx.utils.sheet_to_json(sheet);
 
-    // Eliminamos el archivo temporal después de leerlo
+    // Validar columnas
+    const actualColumns = Object.keys(sheetData[0] || {});
+    const isValid = expectedColumns.every(col => actualColumns.includes(col)) 
+                    && actualColumns.length === expectedColumns.length;
+
+    if (!isValid) {
+      throw new Error("Archivo rechazado: Estructura de columnas incorrecta");
+    }
+
     fs.unlinkSync(filePath);
-
-    // Enviamos los datos en formato JSON al frontend
     res.status(200).json({ success: true, data: sheetData });
+
   } catch (err) {
-    console.error("Error al previsualizar el archivo:", err);
-    res.status(500).json({ success: false, message: "Error al previsualizar el archivo.", error: err.message });
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    console.error("Error en previsualización:", err);
+    
+    // Mensaje detallado
+    res.status(400).json({ 
+      success: false, 
+     message: err.message,
+    details: `Columnas requeridas: ${expectedColumns.join(", ")}`
+    });
   }
 }
-
+// Función para previsualizar los datos del archivo subido
 async function uploadFile(req, res) {
   try {
-    // Verificar si se subió un archivo válido
     if (!req.body.data || !Array.isArray(req.body.data)) {
       return res.status(400).json({ success: false, message: "No se proporcionaron datos para procesar." });
     }
 
-    // Transformar los datos del archivo
     const sheetData = req.body.data.map(row => ({
       ...row,
       nro_serie: row.Nro_Serie ? String(row.Nro_Serie).trim() : "SIN_SERIE",
       Idcliente: row.IdCliente ? String(row.IdCliente) : null,
       Idmarca: row.Marca_nueva ? String(row.Marca_nueva) : null,
       Idmodelo: row.Modelo_nuevo ? String(row.Modelo_nuevo) : null,
-      Idservicio: row.IdServicio ? Number(row.IdServicio) : null, // Convertir a número
-      idProducto: row.IdProducto ? String(row.IdProducto).trim() : null, // 
-
+      Idservicio: row.IdServicio ? Number(row.IdServicio) : null,
+      idProducto: row.IdProducto ? String(row.IdProducto).trim() : null,
     }));
 
     console.log("Datos recibidos para procesamiento:", sheetData);
+    // await deletePreviousData(sheetData);
 
-    // 1. **Borrar datos previos relacionados con las filas del archivo**
-    await deletePreviousData(sheetData); // Asegurar que esta función siga siendo utilizada
-
-    // 2. Procesar cada fila del archivo
     const pool = await poolPromise;
     const errores = [];
     const resultados = [];
 
     for (const [index, row] of sheetData.entries()) {
+      const log = (msg) => console.log(`[Fila ${index + 1}] ${msg}`);
       const transaction = pool.transaction();
-      await transaction.begin();
+      transaction.lockTimeout = 5000; // Timeout de 5 segundos
 
-      try { 
-        console.log(`\n📦 Procesando fila ${index + 1}/${sheetData.length}`);
-        console.log('🔍 Nro Serie:', row.nro_serie);
+      try {
+        await transaction.begin();
+        log(`📦 Procesando (${index + 1}/${sheetData.length})`);
+        log(`🔍 Nro Serie: ${row.nro_serie}`);
 
-        // 3. **Validación de Cliente**
+        // Validación de Cliente
+        let existe_cliente = 0
         if (!row.Idcliente) {
-          console.log(`⚠️ Fila ${index}: Cliente no informado - Continuando sin validación`);
+          log(`⚠️ Cliente no informado - Continuando sin validación`);
         } else {
-          console.log('⚙️ Validando cliente:', row.Idcliente);
+          log(`⚙️ Validando cliente: ${row.Idcliente}`);
           const clienteExiste = await transaction.request()
             .input("IdCliente", sql.VarChar(50), row.Idcliente)
             .query("SELECT COUNT(*) AS count FROM Clientes WHERE nrocta = @IdCliente");
@@ -85,112 +102,91 @@ async function uploadFile(req, res) {
           if (clienteExiste.recordset[0].count === 0) {
             throw new Error(`Cliente no existe en la BD: ${row.Idcliente}`);
           }
-          console.log(`✅ Cliente ${row.Idcliente} encontrado.`);
+          existe_cliente = 1
+          log(`✅ Cliente encontrado`);
         }
 
-        // 4. **Validación de Producto**
-        
-        // console.log(row)
-        // console.log('producto: ', row.idProducto)
+        // Validación de Producto
         if (!row.idProducto) throw new Error('idProducto es requerido');
-        console.log('⚙️ Validando producto:', row.idProducto);
+        log(`⚙️ Validando producto: ${row.idProducto}`);
         const productoExiste = await transaction.request()
-
           .input("idProducto", sql.VarChar(50), row.idProducto)
           .query("SELECT COUNT(*) AS count FROM Productos WHERE idProducto = @idProducto");
 
         if (productoExiste.recordset[0].count === 0) throw new Error(`Producto no encontrado: ${row.idProducto}`);
 
-        // 5. **Validación de Relación Producto-Servicio**
-        const relacion = await transaction.request()
-          .input("IDS", sql.Int, row.Idservicio)
-          .input("IDP", sql.VarChar(50), row.idProducto) 
-          .query("SELECT COUNT(*) AS count FROM ServiciosProductos WHERE IdServicio = @IDS AND idProducto = @IDP");
+        // Validación Relación Producto-Servicio
+        let existeRelacion = false;
+        if (row.Idservicio) {
+          const relacion = await transaction.request()
+            .input("IDS", sql.Int, row.Idservicio)
+            .input("IDP", sql.VarChar(50), row.idProducto)
+            .query("SELECT COUNT(*) AS count FROM ServiciosProductos WHERE IdServicio = @IDS AND idProducto = @IDP");
 
-        const existeRelacion = relacion.recordset[0].count > 0;
-
-        if (existeRelacion) {
-          console.log(`✅ Producto ${row.idProducto} vinculado al servicio ${row.Idservicio}, insertando en ClientesServicios.`);
-          await transaction.request()
-            .input("IdCliente", sql.Int, row.Idcliente)
-            .input("idProducto", sql.VarChar (50), row.idProducto)/// ver si puede ser aca el error 
-            .input("IdServicio", sql.Int, row.Idservicio)
-            .query("INSERT INTO ClientesServicios (IdCliente, idProducto, IdServicio) VALUES (@IdCliente, @idProducto, @IdServicio)");
-        } else {
-          console.warn(`⚠️Producto ${row.idProducto} no vinculado a un servicio. No se insertará en ClientesServicios, pero sí en EquiposFC.`);
+          existeRelacion = relacion.recordset[0].count > 0;
         }
 
-        // 6. **Obtener marca y modelo antes de la inserción**
-        const idMarcaDesc = row.Idmarca && typeof row.Idmarca === "string" ? row.Idmarca.trim() : "SIN_MARCA";
-        console.log(`🔍 Buscando marca: ${idMarcaDesc}`);
-        const marcaId = await obtenerMarca(pool, transaction, idMarcaDesc);
+        // Obtener Marca
+        const idMarcaDesc = row.Idmarca?.trim() || "SIN_MARCA";
+        log(`🔍 Buscando marca: ${idMarcaDesc}`);
+        const marcaId = await obtenerMarca(transaction, idMarcaDesc, index + 1);
 
-        const idModeloDesc = row.Idmodelo && typeof row.Idmodelo === "string" ? row.Idmodelo.trim() : "SIN_MODELO";
-        console.log(`🔍 Buscando modelo: ${idModeloDesc}`);
-        const modeloId = await obtenerModelo(pool, transaction, marcaId, idModeloDesc);        
+        // Obtener Modelo
+        const idModeloDesc = row.Idmodelo?.trim() || "SIN_MODELO";
+        log(`🔍 Buscando modelo: ${idModeloDesc}`);
+        const modeloId = await obtenerModelo(transaction, marcaId, idModeloDesc, index + 1);
 
-        // 7. **Ubicación**
+        // Ubicación
         const ubicacionCliente = await transaction.request()
           .query("SELECT TOP 1 IdUbicacion FROM EquiposFCUbicaciones WHERE Descripcion LIKE '%en%cliente%'");
         const ubicacionDeposito = await transaction.request()
           .query("SELECT TOP 1 IdUbicacion FROM EquiposFCUbicaciones WHERE Descripcion LIKE '%deposito%'");
-
         const idubicacion = ubicacionCliente.recordset[0]?.IdUbicacion || ubicacionDeposito.recordset[0]?.IdUbicacion || 999;
 
-        // 8. **Estado**
+        // Estado
         const estadoOperativo = await transaction.request()
           .query("SELECT TOP 1 IdEstado FROM EquiposFCEstados WHERE Descripcion LIKE '%operativo%'");
+        if (!estadoOperativo.recordset[0]?.IdEstado) throw new Error("No se encontró estado operativo");
 
-        const idestado = estadoOperativo.recordset[0]?.IdEstado;
-        if (!idestado) throw new Error("No se encontró un estado operativo válido.");
+        // Insertar en EquiposFC
+        const idequipo = await obtenerEquipo(transaction, index + 1, row.idProducto, marcaId, modeloId, row.nro_serie, idubicacion, estadoOperativo.recordset[0].IdEstado)
 
-        // 9. **Inserción en EquiposFC**
-        console.log("✅ Insertando equipo en EquiposFC...");
-        await transaction.request()
-          .input("idProducto", sql.VarChar(50), row.idProducto)
-          .input("IdMarca", sql.VarChar(50), String(marcaId))
-          .input("IdModelo", sql.VarChar(50), String(modeloId))
-          .input("Nro_Serie", sql.VarChar(50), row.nro_serie)
-          .input("IdUbicacion", sql.Int, idubicacion)
-          .input("IdEstado", sql.Int, idestado)
-          .query(`
-            INSERT INTO EquiposFC 
-            (idProducto, IdMarca, IdModelo, Nro_Serie, IdUbicacion, IdEstado, Fecha_Alta)
-            VALUES 
-            (@idProducto, @IdMarca, @IdModelo, @Nro_Serie, @IdUbicacion, @IdEstado, GETDATE())
-          `);
+        if (existeRelacion && existe_cliente === 1) {
+          log(`comenzando inserccion en ClientesServicios`);
+          await insertarClientesServicio(transaction, index+1,row.Idcliente, row.Idservicio, row.fecha_desde, idequipo, idMarcaDesc, idModeloDesc, row.idProducto, row.nro_serie)
+        }
 
-        // 10. **Finalizar transacción**
-        console.log("✅ Transacción completada.");
-        resultados.push({ fila: index + 1, mensaje: "Procesado correctamente" });
         await transaction.commit();
+        resultados.push({ fila: index + 1, mensaje: "Procesado correctamente" });
+        log("✅ Transacción completada");
 
-      } catch (error) { 
-        await transaction.rollback();
-        console.error(`❌ Error en fila ${index + 1}: ${error.message}`);
+      } catch (error) {
+        try {
+          if (transaction._aborted === false) {
+            await transaction.rollback();
+          }
+        } catch (rollbackError) {
+          log(`⚠️ Error al hacer rollback: ${rollbackError.message}`);
+        }
+        log(`❌ Error: ${error.message}`);
         errores.push({ fila: index + 1, error: error.message });
       }
     }
-    
-    // **Generar reporte**
+
     const generarReporte = (resultados, errores) => {
       const workbook = xlsx.utils.book_new();
-      
-      // Hoja de resultados
       const wsResultados = xlsx.utils.json_to_sheet(resultados);
-      xlsx.utils.book_append_sheet(workbook, wsResultados, 'Resultados');
-      
-      // Hoja de errores
       const wsErrores = xlsx.utils.json_to_sheet(errores);
+
+      xlsx.utils.book_append_sheet(workbook, wsResultados, 'Resultados');
       xlsx.utils.book_append_sheet(workbook, wsErrores, 'Errores');
-    
+
       const fileName = `reporte_${Date.now()}.xlsx`;
       const filePath = path.join(__dirname, '../uploads', fileName);
-      
+
       xlsx.writeFile(workbook, filePath);
       return filePath;
     };
-
 
     console.log("📄 Generando reporte...");
     const resultadosPath = generarReporte(resultados, errores);
@@ -206,24 +202,22 @@ async function uploadFile(req, res) {
   }
 }
 
-// Función auxiliar para obtener marcas
-async function obtenerMarca(pool, transaction, descripcion) {
-  if (!descripcion || typeof descripcion !== "string" || descripcion.trim() === "") {
-    throw new Error("La descripción de la marca es inválida.");
-  }
+// Funciones auxiliares actualizadas
+async function obtenerMarca(transaction, descripcion, fila) {
+  const log = (msg) => console.log(`[Fila ${fila}] ${msg}`);
 
-  console.log(`Buscando marca con descripción: '${descripcion}'`);
+  if (!descripcion?.trim()) throw new Error("Descripción de marca inválida");
 
+  log(`Buscando marca: '${descripcion}'`);
   const result = await transaction.request()
     .input("Descripcion", sql.VarChar(50), descripcion)
     .query("SELECT TOP 1 IdMarca FROM EquiposFCMarcas WHERE Descripcion = @Descripcion");
 
   if (result.recordset.length > 0) {
-    console.log(`Marca encontrada: ${result.recordset[0].IdMarca}`);
+    log(`Marca existente: ${result.recordset[0].IdMarca}`);
     return String(result.recordset[0].IdMarca);
   }
 
-  // Insertar nueva marca si no existe
   const insertResult = await transaction.request()
     .input("Descripcion", sql.VarChar(50), descripcion)
     .query(`
@@ -232,53 +226,152 @@ async function obtenerMarca(pool, transaction, descripcion) {
       VALUES (@Descripcion)
     `);
 
-  if (!insertResult.recordset.length) {
-    throw new Error(`Error al insertar la marca '${descripcion}'`);
-  }
-
-  console.log(`Nueva marca creada con ID: ${insertResult.recordset[0].IdMarca}`);
+  log(`Nueva marca creada: ${insertResult.recordset[0].IdMarca}`);
   return String(insertResult.recordset[0].IdMarca);
 }
 
-// Función auxiliar para obtener modelos
-async function obtenerModelo(pool, transaction, idMarca, descripcionModelo) {
-  if (!descripcionModelo || typeof descripcionModelo !== "string" || descripcionModelo.trim() === "") {
-    throw new Error("La descripción del modelo es inválida.");
+async function insertarClientesServicio(transaction, fila, idcliente, idservicio, fecha_desde, idequipo, marca, modelo, idproducto, nro_serie) {
+  const log = (msg) => console.log(`[Fila ${fila}] ${msg}`);
+
+  // CHEQUEAR EXISTENCIA SERVICIO
+  log(`Chequeando existencia servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
+  const result = await transaction.request()
+    .input("idcliente", sql.VarChar(50), idcliente)
+    .input("idservicio", sql.Int, idservicio)
+    .input("nro_serie", sql.VarChar(50), idcliente)
+    .query(`SELECT count(*) FROM ClientesServicios 
+      WHERE IdCliente = @idcliente AND IdServicio = @idservicio and nro_serie = @nro_serie and fecha_baja is null`);
+
+  if (result.recordset.length > 0) {
+    // MODIFICAR CLIENTESERVICIO
+    log(`modificando servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
+    const maxNrItemResult = await transaction.request()
+      .input("idcliente", sql.VarChar(50), idcliente)
+      .input("idservicio", sql.Int, idservicio)
+      .input("nro_serie", sql.VarChar(50), idcliente)
+      .query(`
+                SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
+                FROM ClientesServicios WITH (UPDLOCK) 
+                WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and fecha_baja is null
+              `);
+  
+    const newNrItem = maxNrItemResult.recordset[0].MaxItem;
+
+    await transaction.request()
+      .input("idcliente", sql.VarChar(50), idcliente)
+      .input("idservicio", sql.Int, idservicio)
+      .input("nro_serie", sql.VarChar(50), idcliente)
+      .input("nritem", sql.Int, newNrItem)
+      .input("idequipo", sql.Int, idequipo)
+      .input("marca", sql.VarChar(50), marca)
+      .input("modelo", sql.VarChar(50), modelo)
+      .query(`
+              update clientesservicios set idequipo = @idequipo, marca = @marca, modelo = @modelo
+              WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and nritem = @nritem and fecha_baja is null
+              `);
+    
+  } else {
+    // INSERTAR CLIENTESERVICIO
+    log(`Insertaando servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
+    const maxNrItemResult = await transaction.request()
+      .input("IdCliente", sql.VarChar(50), row.Idcliente)
+      .input("IdServicio", sql.Int, row.Idservicio)
+      .query(`
+                SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
+                FROM ClientesServicios WITH (UPDLOCK) 
+                WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and fecha_baja is null
+              `);
+  
+    const newNrItem = maxNrItemResult.recordset[0].MaxItem + 1;
+  
+    await transaction.request()
+      .input("idcliente", sql.VarChar(50), idcliente)
+      .input("idservicio", sql.Int, idservicio)
+      .input("fecha_desde", sql.DateTime, fecha_desde)
+      .input("nritem", sql.Int, newNrItem)
+      .input("idequipo", sql.Int, idequipo)
+      .input("marca", sql.VarChar(50), marca)
+      .input("modelo", sql.VarChar(50), modelo)
+      .input("idproducto", sql.VarChar(50), idproducto)
+      .input("nro_serie", sql.VarChar(50), nro_serie)
+      .input("contrato", sql.VarChar(255), idcliente + '-' + String(newNrItem))
+      .query(`
+                insert into clientesservicios (idcliente,idservicio,nritem,idequipo,marca,modelo,
+                    Nro_Serie,Porcentaje_Descuento,contrato, nroordenalta,nroordenbaja,
+                    fecha_desde,Fecha_Hasta,fecha_alta,IdProducto, sector)
+                values (@idcliente, @idservicio, @nritem, @idequipo, @marca, @modelo,
+                    @nro_serie,0,@contrato,null,null,
+                    @fecha_desde,'21000101',getdate(),@idproducto,'')
+              `);
   }
 
-  console.log(`Buscando modelo con descripción: '${descripcionModelo}', para la marca: '${idMarca}'`);
+}
 
+async function obtenerEquipo(transaction, fila, idProducto, IdMarca, IdModelo, Nro_Serie, IdUbicacion, IdEstado) {
+  const log = (msg) => console.log(`[Fila ${fila}] ${msg}`);
+
+  // if (!descripcion?.trim()) throw new Error("Descripción de marca inválida");
+
+  log(`Insertando EquipoFC ${idProducto} ${IdMarca} ${IdModelo} ${Nro_Serie} ${IdUbicacion} ${IdEstado}`);
   const result = await transaction.request()
-    .input("Descripcion", sql.VarChar(50), descripcionModelo)
+    .input("nro_serie", sql.VarChar(50), Nro_Serie)
+    .query("SELECT TOP 1 idequipo FROM equiposfc WHERE nro_serie = @nro_serie");
+
+  if (result.recordset.length > 0) {
+    log(`Equipo existente: ${result.recordset[0].idequipo}`);
+    return String(result.recordset[0].idequipo);
+  }
+
+  log("✅ Insertando equipo en EquiposFC");
+  const insertResult = await transaction.request()
+    .input("idProducto", sql.VarChar(50), idProducto)
+    .input("IdMarca", sql.VarChar(50), IdMarca)
+    .input("IdModelo", sql.VarChar(50), IdModelo)
+    .input("Nro_Serie", sql.VarChar(50), Nro_Serie)
+    .input("IdUbicacion", sql.Int, IdUbicacion)
+    .input("IdEstado", sql.Int, IdEstado)
+    .query(`
+      INSERT INTO EquiposFC 
+      (idProducto, IdMarca, IdModelo, Nro_Serie, IdUbicacion, IdEstado, Fecha_Alta)
+       OUTPUT inserted.idequipo
+      VALUES 
+      (@idProducto, @IdMarca, @IdModelo, @Nro_Serie, @IdUbicacion, @IdEstado, GETDATE())
+    `);
+
+  log(`Nueva equipofc creado: ${insertResult.recordset[0].idequipo}`);
+  return String(insertResult.recordset[0].idequipo);
+}
+
+async function obtenerModelo(transaction, idMarca, descripcion, fila) {
+  const log = (msg) => console.log(`[Fila ${fila}] ${msg}`);
+
+  if (!descripcion?.trim()) throw new Error("Descripción de modelo inválida");
+
+  log(`Buscando modelo: '${descripcion}' para marca ${idMarca}`);
+  const result = await transaction.request()
+    .input("Descripcion", sql.VarChar(50), descripcion)
     .input("IdMarca", sql.VarChar(50), idMarca)
     .query("SELECT TOP 1 IdModelo FROM EquiposFCMarcasModelos WHERE Descripcion = @Descripcion AND IdMarca = @IdMarca");
 
   if (result.recordset.length > 0) {
-    console.log(`Modelo encontrado: ${result.recordset[0].IdModelo}`);
+    log(`Modelo existente: ${result.recordset[0].IdModelo}`);
     return String(result.recordset[0].IdModelo);
   }
 
-  // Insertar nuevo modelo si no existe
   const insertResult = await transaction.request()
     .input("IdMarca", sql.VarChar(50), idMarca)
-    .input("Descripcion", sql.VarChar(50), descripcionModelo)
+    .input("Descripcion", sql.VarChar(50), descripcion)
     .query(`
       INSERT INTO EquiposFCMarcasModelos (IdMarca, Descripcion)
       OUTPUT INSERTED.IdModelo
       VALUES (@IdMarca, @Descripcion)
     `);
 
-  if (!insertResult.recordset.length) {
-    throw new Error(`Error al insertar el modelo '${descripcionModelo}' para la marca '${idMarca}'`);
-  }
-
-  console.log(`Nuevo modelo creado con ID: ${insertResult.recordset[0].IdModelo}`);
+  log(`Nuevo modelo creado: ${insertResult.recordset[0].IdModelo}`);
   return String(insertResult.recordset[0].IdModelo);
 }
 
-
-module.exports = { uploadFile }; 
-
+module.exports = { uploadFile };
 
 
 async function downloadData(req, res) {
@@ -335,7 +428,7 @@ async function downloadData(req, res) {
         WHERE Fecha_Baja IS NULL
           AND NOT Nro_Serie IN (SELECT Nro_Serie FROM EquiposFC);
     `;
-    
+
     console.log(queryEstructura);
     const resultEstructura = await pool.request().query(queryEstructura);
     console.log('DESCARGAR ESTRUCTURA BD');
@@ -343,9 +436,9 @@ async function downloadData(req, res) {
     // Validación de datos vacíos
     if (resultEstructura.recordset.length === 0) {
       console.log('No hay datos para generar estructura');
-      return res.status(404).json({ 
-        success: false, 
-        message: 'No se encontraron datos para descargar.' 
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontraron datos para descargar.'
       });
     }
 
@@ -359,7 +452,7 @@ async function downloadData(req, res) {
     // Creación y envío de Excel
     try {
       console.log(`Registros encontrados: ${resultEstructura.recordset.length}`);
-      
+
       const workbookEstructura = xlsx.utils.book_new();
       const worksheetEstructura = xlsx.utils.json_to_sheet(resultEstructura.recordset);
       xlsx.utils.book_append_sheet(workbookEstructura, worksheetEstructura, 'Estructura');
@@ -382,10 +475,10 @@ async function downloadData(req, res) {
             message: 'Error al descargar el archivo.'
           });
         }
-        
+
         // Nuevo mensaje de éxito
         console.log('Archivo descargado correctamente:', fileName);
-        
+
         setTimeout(() => {
           if (fs.existsSync(filePathEstructura)) {
             fs.unlinkSync(filePathEstructura);
@@ -396,10 +489,10 @@ async function downloadData(req, res) {
 
     } catch (err) {
       console.error('Error en proceso de estructura:', err.message);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Error al generar estructura', 
-        error: err.message 
+      return res.status(500).json({
+        success: false,
+        message: 'Error al generar estructura',
+        error: err.message
       });
     }
 

@@ -6,29 +6,42 @@ import './App.css';
 
 const App = () => {
   const [previewData, setPreviewData] = useState(null); // Datos de previsualización
-  const [file, setFile] = useState(null); // Almacena el archivo seleccionado
+  // const [file, setFile] = useState(null); // Almacena el archivo seleccionado
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleFileUpload = (file) => {
-    const reader = new FileReader(); // Crea un lector de archivos
-
+    const reader = new FileReader();
+  
     reader.onload = (e) => {
       try {
-        // Lee el contenido del archivo como binario
         const workbook = XLSX.read(e.target.result, { type: 'binary' });
-        const sheetName = workbook.SheetNames[0]; // Usa la primera hoja del Excel
-        const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]); // Convierte la hoja a JSON
-
-        console.log("Datos del archivo:", sheetData); // Muestra los datos en la consola (para depuración)
-        setPreviewData(sheetData); // Actualiza `previewData` con los datos procesados
-        setIsModalOpen(true); // Abre el modal
+        const sheetName = workbook.SheetNames[0];
+        const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+  
+        // 1. Agregar validación básica de columnas en frontend
+        const expectedColumns = [
+          "IdCliente", "Marca", "Marca_nueva", "Modelo", 
+          "Modelo_nuevo", "Nro_Serie", "IdProducto", 
+          "idubicacion", "idestado", "IdServicio", "Fecha_Desde"
+        ];
+  
+        const actualColumns = Object.keys(sheetData[0] || {});
+        const isValid = expectedColumns.every(col => actualColumns.includes(col));
+  
+        if (!isValid) {
+          throw new Error("Estructura incorrecta. Verifica las columnas");
+        }
+  
+        setPreviewData(sheetData);
+        setIsModalOpen(true);
+  
       } catch (error) {
-        console.error("Error al procesar el archivo Excel:", error); // Maneja errores
+        alert(error.message); // Mensaje específico
+        console.error("Error:", error);
       }
     };
-
-    reader.readAsBinaryString(file); // Lee el archivo como binario
-    setFile(file); // Guarda el archivo para enviarlo al backend más adelante
+  
+    reader.readAsBinaryString(file);
   };
 
   const handleConfirm = async () => {
@@ -66,7 +79,7 @@ const App = () => {
   return (
     <div>
       <div className="page-title">
-        <i className="fas fa-folder-open"></i> Gestión de Archivos 📁
+        <i className="fas fa-folder-open"></i> Gestión de Archivos FC 📁
       </div>
       <div className="app">
         <ButtonPanel onUpload={handleFileUpload} />

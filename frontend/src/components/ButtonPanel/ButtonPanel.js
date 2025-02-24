@@ -28,7 +28,7 @@ const ButtonPanel = ({ onUpload }) => {
         }
       } catch (error) {
         console.error('Error al previsualizar el archivo:', error);
-        alert('Error al enviar el archivo para previsualización.');
+        alert('Error en previsualización: Archivo rechazado: Estructura de columnas incorrecta');
       }
     }
   };
