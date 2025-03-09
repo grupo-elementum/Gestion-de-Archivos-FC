@@ -40,6 +40,14 @@ const ButtonPanel = ({ onUpload }) => {
 
   return (
     <div className="button-panel">
+      {/* Botón Descargar Archivo con círculo al comienzo */}
+      <div className="button-group">
+        <div className="circle">
+          <span className="icon">⬇</span>
+        </div>
+        <FileDownload className="btn download-btn" />
+      </div>
+
       {/* Botón Subir Archivo con círculo al final */}
       <div className="button-group">
         <button className="btn upload-btn" onClick={handleUploadClick}>
@@ -56,14 +64,6 @@ const ButtonPanel = ({ onUpload }) => {
         />
       </div>
 
-      {/* Botón Descargar Archivo con círculo al comienzo */}
-      <div className="button-group">
-        <div className="circle">
-          <span className="icon">⬇</span>
-        </div>
-        <FileDownload className="btn download-btn" />
-      </div>
-
       {/* Modal de previsualización */}
       {showModal && (
         <PreviewModal
@@ -74,6 +74,7 @@ const ButtonPanel = ({ onUpload }) => {
       )}
     </div>
   );
+
 };
 
 export default ButtonPanel;

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import './PreviewModal.css';
 
 const formatDate = (date) => {
@@ -12,28 +13,29 @@ const formatDate = (date) => {
 
 const PreviewModal = ({ data, onConfirm, onCancel }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   const handleConfirm = async () => {
     setIsLoading(true);
+    setProgress(0);
+
     try {
-      const response = await fetch('http://localhost:4000/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data }),
-      });
+      const response = await axios.post('http://localhost:4000/api/upload', 
+        { data },
+        {
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
 
-      const result = await response.json();
+      const result = response.data;
       
-      if (!response.ok) { 
-        throw new Error(result.message || 'Error en la estructura del archivo');
-      }
-
-      // Descargar resultados si existen
       if (result.resultadosPath) {
         const downloadUrl = `http://localhost:4000${result.resultadosPath}`;
-        const downloadResponse = await fetch(downloadUrl);
-        const blob = await downloadResponse.blob();
-        const url = window.URL.createObjectURL(blob);
+        const downloadResponse = await axios.get(downloadUrl, {
+          responseType: 'blob'
+        });
+        
+        const url = window.URL.createObjectURL(new Blob([downloadResponse.data]));
         const a = document.createElement('a');
         a.href = url;
         a.download = 'resultados_importacion.xlsx';
@@ -44,10 +46,14 @@ const PreviewModal = ({ data, onConfirm, onCancel }) => {
       }
 
       alert(result.message || 'Archivo procesado correctamente');
-      onConfirm(); // Cerrar el modal
+      setProgress(100);
+      onConfirm();
 
     } catch (error) {
-      alert(error.message); // Mostrar mensaje específico del backend
+      const errorMessage = error.response?.data?.message || 
+                         error.message || 
+                         'Error en la estructura del archivo';
+      alert(errorMessage);
       console.error('Error en confirmación:', error);
     } finally {
       setIsLoading(false);
@@ -103,13 +109,23 @@ const PreviewModal = ({ data, onConfirm, onCancel }) => {
           </table>
         </div>
 
+        {/* Barra de Progreso */}
+        {isLoading && (
+          <div className="progress-bar-container">
+            <div 
+              className="progress-bar" 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        )}
+
         <div className="modal-actions fixed-actions">
           <button 
             className="confirm-btn" 
             onClick={handleConfirm}
             disabled={isLoading}
           >
-            {isLoading ? 'Validando...' : 'Confirmar'}
+            {isLoading ? 'Subiendo...' : 'Confirmar'}
           </button>
           
           <button 
