@@ -18,10 +18,10 @@ async function previewFile(req, res) {
 
   try {
     if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: "No se subió ningún archivo.",
-        details: `Columnas requeridas: ${expectedColumns.join(", ")}` 
+        details: `Columnas requeridas: ${expectedColumns.join(", ")}`
       });
     }
 
@@ -33,8 +33,8 @@ async function previewFile(req, res) {
 
     // Validar columnas
     const actualColumns = Object.keys(sheetData[0] || {});
-    const isValid = expectedColumns.every(col => actualColumns.includes(col)) 
-                    && actualColumns.length === expectedColumns.length;
+    const isValid = expectedColumns.every(col => actualColumns.includes(col))
+      && actualColumns.length === expectedColumns.length;
 
     if (!isValid) {
       throw new Error("Archivo rechazado: Estructura de columnas incorrecta");
@@ -46,12 +46,12 @@ async function previewFile(req, res) {
   } catch (err) {
     if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
     console.error("Error en previsualización:", err);
-    
+
     // Mensaje detallado
-    res.status(400).json({ 
-      success: false, 
-     message: err.message,
-    details: `Columnas requeridas: ${expectedColumns.join(", ")}`
+    res.status(400).json({
+      success: false,
+      message: err.message,
+      details: `Columnas requeridas: ${expectedColumns.join(", ")}`
     });
   }
 }
@@ -153,11 +153,15 @@ async function uploadFile(req, res) {
 
         if (existeRelacion && existe_cliente === 1) {
           log(`comenzando inserccion en ClientesServicios`);
-          await insertarClientesServicio(transaction, index+1,row.Idcliente, row.Idservicio, row.fecha_desde, idequipo, idMarcaDesc, idModeloDesc, row.idProducto, row.nro_serie)
+          await insertarClientesServicio(transaction, index + 1, row.Idcliente, row.Idservicio, row.fecha_desde, idequipo, idMarcaDesc, idModeloDesc, row.idProducto, row.nro_serie)
         }
 
         await transaction.commit();
-        resultados.push({ fila: index + 1, mensaje: "Procesado correctamente" });
+        resultados.push({
+          fila: index + 1,
+          mensaje: "Procesado correctamente",
+          nro_serie: row.nro_serie // Nueva columna
+        });
         log("✅ Transacción completada");
 
       } catch (error) {
@@ -169,7 +173,10 @@ async function uploadFile(req, res) {
           log(`⚠️ Error al hacer rollback: ${rollbackError.message}`);
         }
         log(`❌ Error: ${error.message}`);
-        errores.push({ fila: index + 1, error: error.message });
+        errores.push({ fila: index + 1, 
+          error: error.message ,
+          nro_serie: row.nro_serie // Nueva columna
+});
       }
     }
 
@@ -254,7 +261,7 @@ async function insertarClientesServicio(transaction, fila, idcliente, idservicio
                 FROM ClientesServicios WITH (UPDLOCK) 
                 WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and fecha_baja is null
               `);
-  
+
     const newNrItem = maxNrItemResult.recordset[0].MaxItem;
 
     await transaction.request()
@@ -269,10 +276,10 @@ async function insertarClientesServicio(transaction, fila, idcliente, idservicio
               update clientesservicios set idequipo = @idequipo, marca = @marca, modelo = @modelo
               WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and nritem = @nritem and fecha_baja is null
               `);
-    
+
   } else {
     // INSERTAR CLIENTESERVICIO
-    log(`Insertaando servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
+    log(` ✅ Insertaando servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
     const maxNrItemResult = await transaction.request()
       .input("IdCliente", sql.VarChar(50), row.Idcliente)
       .input("IdServicio", sql.Int, row.Idservicio)
@@ -281,9 +288,9 @@ async function insertarClientesServicio(transaction, fila, idcliente, idservicio
                 FROM ClientesServicios WITH (UPDLOCK) 
                 WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and fecha_baja is null
               `);
-  
+
     const newNrItem = maxNrItemResult.recordset[0].MaxItem + 1;
-  
+
     await transaction.request()
       .input("idcliente", sql.VarChar(50), idcliente)
       .input("idservicio", sql.Int, idservicio)
