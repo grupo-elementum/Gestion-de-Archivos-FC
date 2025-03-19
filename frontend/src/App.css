@@ -1,0 +1,47 @@
+/* General */
+body {
+    /* margin: 0; */
+    font-family: Arial, sans-serif;
+    background: linear-gradient(to bottom, #E1CBD7, #86A8CF); /* Tono celeste o gris */
+    color: #333;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start; /* Alineación hacia arriba */
+    min-height: 100vh;
+margin-top: 30px
+}
+  
+  /* Título principal */
+  .page-title {
+    font-size: 1.6rem; /* Reducir el tamaño del título */
+    margin-top: 10px; /* Separación mínima del borde superior */
+    margin-bottom: 20px; /* Espacio con respecto al siguiente bloque */
+    color: #26425A; /* Contraste */
+    text-align: center;
+    font-family: 'Poppins', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%; /* Asegurar que el título ocupe todo el ancho disponible */
+  }
+
+  /* Contenedor Principal */
+.app {
+    width: 90%;
+    max-width: 1100px;
+    background-color: rgba(255, 255, 255, 0.1); /* Transparencia del fondo */
+    padding: 20px; /* Relleno interno */
+    margin: 40px auto; /* Separación del título */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* Sombra para profundidad */
+    border: 1px solid rgba(255, 255, 255, 0.3); /* Borde transparente */
+    border-radius: 25px; /* Bordes redondeados */
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  
