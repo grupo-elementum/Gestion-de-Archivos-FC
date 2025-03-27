@@ -3,9 +3,9 @@ const sql = require('mssql');
 // Configuración de conexión
 const config = {
     user: 'sa', 
-    password: 'Adm@2487', 
-    server: '192.168.100.50', // Nombre del servidor 
-    database: 'H2O_BELEN', // Nombre de base de datos
+    password: 'Monica2487', 
+    server: '10.0.0.242', // Nombre del servidor 
+    database: 'H2O_SODAMONICA', // Nombre de base de datos
     options: {
         encrypt: false, // Cambiar a true si se necesita una conexión encriptad
         enableArithAbort: true

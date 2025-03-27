@@ -65,7 +65,7 @@ async function uploadFile(req, res) {
     const sheetData = req.body.data.map(row => ({
       ...row,
   
-      nro_serie: row.nro_Serie ? String(row.nro_Serie).trim() : "SIN_SERIE",
+      nro_serie: row.nro_serie ? String(row.nro_serie).trim() : "SIN_SERIE",
       nro_serie_nuevo: row.nro_serie_nuevo ? String(row.nro_serie_nuevo).trim() : null, //// ultimo dato incorporado
       Idcliente: row.idcliente ? String(row.idcliente) : null,
       Idmarca: row.marca_nueva ? String(row.marca_nueva) : null,
@@ -89,7 +89,7 @@ async function uploadFile(req, res) {
       try {
         await transaction.begin();
         log(`📦 Procesando (${index + 1}/${sheetData.length})`);
-        log(`🔍 Nro Serie: ${row.nro_serie}`);
+        log(`🔍 Nro Serie: ${row.nro_serie_nuevo}`);
 
         // Validación de Cliente
         let existe_cliente = 0
@@ -152,12 +152,11 @@ async function uploadFile(req, res) {
         if (!estadoOperativo.recordset[0]?.IdEstado) throw new Error("No se encontró estado operativo");
 
         // Insertar en EquiposFC
-        const idequipo = await obtenerEquipo(transaction, index + 1, row.idProducto, marcaId, modeloId, row.nro_serie, idubicacion, estadoOperativo.recordset[0].IdEstado)
+        const idequipo = await obtenerEquipo(transaction, index + 1, row.idProducto, marcaId, modeloId, row.nro_serie_nuevo, idubicacion, estadoOperativo.recordset[0].IdEstado)
 
         if (existeRelacion && existe_cliente === 1) {
           log(`comenzando inserccion en ClientesServicios`);
-          await insertarClientesServicio(transaction, index + 1, row.Idcliente, row.Idservicio, row.fecha_desde, idequipo, idMarcaDesc, idModeloDesc, row.idProducto, row.nro_serie)
-        }
+          await insertarClientesServicio(transaction, index + 1, row.Idcliente, row.Idservicio, row.fecha_desde, idequipo, idMarcaDesc, idModeloDesc, row.idProducto, row.nro_serie, row.nro_serie_nuevo);        }
 
         await transaction.commit();
         resultados.push({
@@ -240,79 +239,172 @@ async function obtenerMarca(transaction, descripcion, fila) {
   return String(insertResult.recordset[0].IdMarca);
 }
 
-async function insertarClientesServicio(transaction, fila, idcliente, idservicio, fecha_desde, idequipo, marca, modelo, idproducto, nro_serie) {
-  const log = (msg) => console.log(`[Fila ${fila}] ${msg}`);
+async function insertarClientesServicio(transaction, fila, idcliente, idservicio, fecha_desde, idequipo, marca, modelo, idproducto, nro_serie, nro_serie_nuevo) {
+  const log = (msg) => console.log(`[Fila ${fila}] ${msg}`)
 
-  // CHEQUEAR EXISTENCIA SERVICIO
-  log(`Chequeando existencia servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
-  const result = await transaction.request()
-    .input("idcliente", sql.VarChar(50), idcliente)
-    .input("idservicio", sql.Int, idservicio)
-    .input("nro_serie", sql.VarChar(50), nro_serie)
-    .query(`SELECT count(*) FROM ClientesServicios 
-      WHERE IdCliente = @idcliente AND IdServicio = @idservicio and nro_serie = @nro_serie and fecha_baja is null`);
+  ///// PARA EL CAMBIO DE NUMERO DE SERIE NUEVO- 
+  // Definir nro_serie_final
+  const nro_serie_final = nro_serie_nuevo ? String(nro_serie_nuevo).trim() : nro_serie;
 
-  if (result.recordset.length > 0) {
-    // MODIFICAR CLIENTESERVICIO
-    log(`modificando servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
-    const maxNrItemResult = await transaction.request()
+  if (nro_serie == 'SIN_SERIE') {
+    // CHEQUEAR EXISTENCIA SERVICIO
+    log(`Chequeando existencia servicio en cliente: '${nro_serie_final}' ${idcliente} ${idservicio}`);
+    const result = await transaction.request()
       .input("idcliente", sql.VarChar(50), idcliente)
       .input("idservicio", sql.Int, idservicio)
-      .input("nro_serie", sql.VarChar(50), nro_serie)
-      .query(`
-                SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
-                FROM ClientesServicios WITH (UPDLOCK) 
-                WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and fecha_baja is null
-              `);
+      .input("nro_serie", sql.VarChar(50), nro_serie_final)
+      .query(`SELECT count(*) FROM ClientesServicios 
+        WHERE IdCliente = @idcliente AND IdServicio = @idservicio and nro_serie = @nro_serie and fecha_baja is null`);
 
-    const newNrItem = maxNrItemResult.recordset[0].MaxItem;
+    if (result.recordset.length > 0) {
+      // MODIFICAR CLIENTESERVICIO
+      log(`modificando servicio en cliente: '${nro_serie_final}' ${idcliente} ${idservicio}`);
+      const maxNrItemResult = await transaction.request()
+        .input("idcliente", sql.VarChar(50), idcliente)
+        .input("idservicio", sql.Int, idservicio)
+        .input("nro_serie", sql.VarChar(50), nro_serie_final) /// USA nro_serie_final PARA ACTUALIZAR 
+        .query(`
+                  SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
+                  FROM ClientesServicios WITH (UPDLOCK) 
+                  WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and fecha_baja is null
+                `);
 
-    await transaction.request()
-      .input("idcliente", sql.VarChar(50), idcliente)
-      .input("idservicio", sql.Int, idservicio)
-      .input("nro_serie", sql.VarChar(50), nro_serie)
-      .input("nritem", sql.Int, newNrItem)
-      .input("idequipo", sql.Int, idequipo)
-      .input("marca", sql.VarChar(50), marca)
-      .input("modelo", sql.VarChar(50), modelo)
-      .query(`
-              update clientesservicios set idequipo = @idequipo, marca = @marca, modelo = @modelo
-              WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and nritem = @nritem and fecha_baja is null
-              `);
+      const newNrItem = maxNrItemResult.recordset[0].MaxItem;
 
+      await transaction.request()
+        .input("idcliente", sql.VarChar(50), idcliente)
+        .input("idservicio", sql.Int, idservicio)
+        // .input("nro_serie_anterior", sql.VarChar(50), nro_serie)
+        .input("nro_serie", sql.VarChar(50), nro_serie_final)
+        .input("nritem", sql.Int, newNrItem)
+        .input("idequipo", sql.Int, idequipo)
+        .input("marca", sql.VarChar(50), marca)
+        .input("modelo", sql.VarChar(50), modelo)
+        .query(`
+                update clientesservicios set idequipo = @idequipo, marca = @marca, modelo = @modelo
+                WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie
+                and nritem = @nritem and fecha_baja is null
+                `);
+
+    } else {
+      // INSERTAR CLIENTESERVICIO
+      log(` ✅ Insertaando servicio en cliente: '${nro_serie_final}' ${idcliente} ${idservicio}`);
+      const maxNrItemResult = await transaction.request()
+        .input("IdCliente", sql.VarChar(50), idcliente)
+        .input("IdServicio", sql.Int, idservicio)
+        .query(`
+                  SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
+                  FROM ClientesServicios WITH (UPDLOCK) 
+                  WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and fecha_baja is null
+                `);
+
+      const newNrItem = maxNrItemResult.recordset[0].MaxItem + 1;
+
+      await transaction.request()
+        .input("idcliente", sql.VarChar(50), idcliente)
+        .input("idservicio", sql.Int, idservicio)
+        .input("fecha_desde", sql.DateTime, fecha_desde)
+        .input("nritem", sql.Int, newNrItem)
+        .input("idequipo", sql.Int, idequipo)
+        .input("marca", sql.VarChar(50), marca)
+        .input("modelo", sql.VarChar(50), modelo)
+        .input("idproducto", sql.VarChar(50), idproducto)
+        .input("nro_serie", sql.VarChar(50), nro_serie_final)
+        .input("contrato", sql.VarChar(255), idcliente + '-' + String(newNrItem))
+        .query(`
+                  insert into clientesservicios (idcliente,idservicio,nritem,idequipo,marca,modelo,
+                      Nro_Serie,Porcentaje_Descuento,contrato, nroordenalta,nroordenbaja,
+                      fecha_desde,Fecha_Hasta,fecha_alta,IdProducto, sector)
+                  values (@idcliente, @idservicio, @nritem, @idequipo, @marca, @modelo,
+                      @nro_serie,0,@contrato,null,null,
+                      @fecha_desde,'21000101',getdate(),@idproducto,'')
+                `);
+    }
   } else {
-    // INSERTAR CLIENTESERVICIO
-    log(` ✅ Insertaando servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
-    const maxNrItemResult = await transaction.request()
-      .input("IdCliente", sql.VarChar(50), row.Idcliente)
-      .input("IdServicio", sql.Int, row.Idservicio)
-      .query(`
-                SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
-                FROM ClientesServicios WITH (UPDLOCK) 
-                WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and fecha_baja is null
-              `);
+     // CHEQUEAR EXISTENCIA SERVICIO
+     log(`MODIFICANDO NRO DE SERIE ANTERIOR: '${nro_serie}' ${nro_serie_final} `);
+     log(`Chequeando existencia servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
+     const result = await transaction.request()
+       .input("idcliente", sql.VarChar(50), idcliente)
+       .input("idservicio", sql.Int, idservicio)
+       .input("nro_serie", sql.VarChar(50), nro_serie)
+       .query(`SELECT count(*) FROM ClientesServicios 
+         WHERE IdCliente = @idcliente AND IdServicio = @idservicio and nro_serie = @nro_serie and fecha_baja is null`);
 
-    const newNrItem = maxNrItemResult.recordset[0].MaxItem + 1;
+      if (result.recordset.length > 0) {
+      // MODIFICAR CLIENTESERVICIO
+      log(`modificando servicio en cliente: '${nro_serie}' ${idcliente} ${idservicio}`);
+      const maxNrItemResult = await transaction.request()
+        .input("idcliente", sql.VarChar(50), idcliente)
+        .input("idservicio", sql.Int, idservicio)
+        .input("nro_serie", sql.VarChar(50), nro_serie) /// USA nro_serie_final PARA ACTUALIZAR 
+        .query(`
+                  SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
+                  FROM ClientesServicios WITH (UPDLOCK) 
+                  WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie and fecha_baja is null
+                `);
 
-    await transaction.request()
-      .input("idcliente", sql.VarChar(50), idcliente)
-      .input("idservicio", sql.Int, idservicio)
-      .input("fecha_desde", sql.DateTime, fecha_desde)
-      .input("nritem", sql.Int, newNrItem)
-      .input("idequipo", sql.Int, idequipo)
-      .input("marca", sql.VarChar(50), marca)
-      .input("modelo", sql.VarChar(50), modelo)
-      .input("idproducto", sql.VarChar(50), idproducto)
-      .input("nro_serie", sql.VarChar(50), nro_serie)
-      .input("contrato", sql.VarChar(255), idcliente + '-' + String(newNrItem))
-      .query(`
-                insert into clientesservicios (idcliente,idservicio,nritem,idequipo,marca,modelo,
-                    Nro_Serie,Porcentaje_Descuento,contrato, nroordenalta,nroordenbaja,
-                    fecha_desde,Fecha_Hasta,fecha_alta,IdProducto, sector)
-                values (@idcliente, @idservicio, @nritem, @idequipo, @marca, @modelo,
-                    @nro_serie,0,@contrato,null,null,
-                    @fecha_desde,'21000101',getdate(),@idproducto,'')
-              `);
+      const newNrItem = maxNrItemResult.recordset[0].MaxItem;
+
+      await transaction.request()
+        .input("idcliente", sql.VarChar(50), idcliente)
+        .input("idservicio", sql.Int, idservicio)
+        .input("nro_serie_anterior", sql.VarChar(50), nro_serie)
+        .input("nro_serie", sql.VarChar(50), nro_serie_final)
+        .input("nritem", sql.Int, newNrItem)
+        .input("idequipo", sql.Int, idequipo)
+        .input("marca", sql.VarChar(50), marca)
+        .input("modelo", sql.VarChar(50), modelo)
+        .query(`
+                update clientesservicios set idequipo = @idequipo, marca = @marca, modelo = @modelo, nro_serie = @nro_serie
+                WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and nro_serie = @nro_serie_anterior 
+                and nritem = @nritem and fecha_baja is null
+                `);
+
+    } else {
+      // INSERTAR CLIENTESERVICIO
+      log(`Chequeando existencia servicio en cliente: '${nro_serie_final}' ${idcliente} ${idservicio}`);
+     const result = await transaction.request()
+       .input("idcliente", sql.VarChar(50), idcliente)
+       .input("idservicio", sql.Int, idservicio)
+       .input("nro_serie", sql.VarChar(50), nro_serie_final)
+       .query(`SELECT count(*) FROM ClientesServicios 
+         WHERE IdCliente = @idcliente AND IdServicio = @idservicio and nro_serie = @nro_serie and fecha_baja is null`);
+
+      if (!result.recordset.length > 0) {
+        log(` ✅ Insertaando servicio en cliente: '${nro_serie_final}' ${idcliente} ${idservicio}`);
+        const maxNrItemResult = await transaction.request()
+          .input("IdCliente", sql.VarChar(50), idcliente)
+          .input("IdServicio", sql.Int, idservicio)
+          .query(`
+                    SELECT ISNULL(MAX(NrItem), 0) AS MaxItem 
+                    FROM ClientesServicios WITH (UPDLOCK) 
+                    WHERE IdCliente = @IdCliente AND IdServicio = @IdServicio and fecha_baja is null
+                  `);
+
+        const newNrItem = maxNrItemResult.recordset[0].MaxItem + 1;
+
+        await transaction.request()
+          .input("idcliente", sql.VarChar(50), idcliente)
+          .input("idservicio", sql.Int, idservicio)
+          .input("fecha_desde", sql.DateTime, fecha_desde)
+          .input("nritem", sql.Int, newNrItem)
+          .input("idequipo", sql.Int, idequipo)
+          .input("marca", sql.VarChar(50), marca)
+          .input("modelo", sql.VarChar(50), modelo)
+          .input("idproducto", sql.VarChar(50), idproducto)
+          .input("nro_serie", sql.VarChar(50), nro_serie_final)
+          .input("contrato", sql.VarChar(255), idcliente + '-' + String(newNrItem))
+          .query(`
+                    insert into clientesservicios (idcliente,idservicio,nritem,idequipo,marca,modelo,
+                        Nro_Serie,Porcentaje_Descuento,contrato, nroordenalta,nroordenbaja,
+                        fecha_desde,Fecha_Hasta,fecha_alta,IdProducto, sector)
+                    values (@idcliente, @idservicio, @nritem, @idequipo, @marca, @modelo,
+                        @nro_serie,0,@contrato,null,null,
+                        @fecha_desde,'21000101',getdate(),@idproducto,'')
+                  `);
+        }
+    }
   }
 
 }
